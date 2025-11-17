@@ -1,7 +1,5 @@
-/app.log
-/test.py
-venv
-.idea
-files
-logs
-/.env.py
+/.venv/
+/data/
+/.env
+/.idea/
+/toy/
