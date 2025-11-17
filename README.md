@@ -2,7 +2,7 @@
 
 Yoo Growth Buddy 是一个面向 3–12 岁儿童的 **智能语音陪伴玩具后端系统**，
 支持多轮对话、语音交互、安全审计和会话记录查询，
-适合作为个人项目或实际产品原型。
+既可以作为个人项目，也可以演化为实际产品原型。
 
 ---
 
@@ -20,7 +20,7 @@ Yoo Growth Buddy 是一个面向 3–12 岁儿童的 **智能语音陪伴玩具�
   5. 使用 **讯飞 TTS** 将回复文本合成为语音（PCM → WAV）；
   6. 将回复语音通过 MQTT 发送回终端：  
      `toy/{device_sn}/voice/reply`
-- 每一轮对话（Turn）的**文本和语音元数据**都会落库，并将音频文件上传到 **S3 兼容对象存储**。
+- 每一轮对话（Turn）的 **文本和语音元数据** 都会落库，并将音频文件上传到 **S3 兼容对象存储**。
 
 ### 2. 家长管理 & 配置
 
@@ -37,17 +37,17 @@ Yoo Growth Buddy 是一个面向 3–12 岁儿童的 **智能语音陪伴玩具�
 - 家长可以查询 **某个孩子的会话列表**：
   - 会话起止时间（基于 Turn 时间戳推断）；
   - 轮次数量；
-  - 最近一轮对话的用户文本 & 回复文本；
-  - 是否存在风险对话以及风险轮次统计。
+  - 是否存在风险对话。
+
 - 家长可以查看 **单次会话详情**：
   - 每一轮的：
     - 文本（孩子 → 小yo）；
     - 语音访问 URL（存储于 S3）；
     - 风险标记（是否风险、来源、原因）。
 
-> 设计原则：
-> - **孩子说的“不安全内容”会保留**，以便家长及时发现；  
-> - **模型回复的部分会经过安全收敛**，不保存不合规回复，只保存经过收敛后的安全文本。
+> 策略：
+> - 孩子说的“不安全内容”会保存，用于家长监控；  
+> - 模型回复会做安全收敛，不保存不合规回复，只保存收敛后的安全版本。
 
 ---
 
@@ -113,8 +113,105 @@ yoo-growth-buddy/
   init_db.py            # 初始化数据库表结构
   init_data.py          # 插入一些测试数据（家长/孩子/设备）
   requirements.txt      # Python 依赖
-  .env                  # 环境变量配置（不提交到仓库）
+  .env.example          # 环境变量模板文件（提交到 Git）
+  .env                  # 本地环境变量配置（不要提交）
 ```
+
+---
+
+## 环境变量配置
+ 
+将 `.env.example` 复制为 `.env` 并按你的环境修改具体值：
+
+```bash
+cp .env.example .env   # Windows 可直接复制文件
+```
+
+建议的 `.env.example` 字段如下（根据当前代码整理）：
+
+### 基础信息
+
+```env
+ENV=dev
+APP_NAME="Yoo Growth Buddy"
+APP_VERSION=0.2.0
+```
+
+### 数据库（MySQL）
+
+```env
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_USER=yoo_buddy
+DB_PASSWORD=your_db_password
+DB_NAME=yoo_growth_buddy
+```
+
+> `config.py` 会根据这些字段组装 `DATABASE_URL`，例如：  
+> `mysql+pymysql://DB_USER:DB_PASSWORD@DB_HOST:DB_PORT/DB_NAME`
+
+### 大模型（以 DeepSeek 为例）
+
+```env
+DEEPSEEK_API_KEY=sk-xxx
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-chat
+```
+
+> 如果之后接入 OpenAI / Qwen，可以在 `llm/` 下扩展对应 Provider，  
+> 再增加自己的环境变量，例如 `OPENAI_API_KEY`、`QWEN_API_KEY` 等。
+
+### 讯飞语音（ASR + TTS）
+
+```env
+XFYUN_APPID=your_xfyun_appid
+XFYUN_APIKEY=your_xfyun_apikey
+XFYUN_APISECRET=your_xfyun_apisecret
+```
+
+### 对象存储（S3 兼容）
+
+```env
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_S3_REGION=auto
+AWS_S3_BUCKET=yoo-growth-buddy
+AWS_S3_BASE_URL=https://your-cdn-or-endpoint
+# 如有自定义 endpoint，可额外加：
+# AWS_S3_ENDPOINT_URL=https://your-s3-endpoint
+```
+
+- `storage_s3.py` 会基于以上配置初始化 S3 客户端、上传文件，并拼出对外的访问 URL。  
+- 对话语音文件的 key 大致形如：  
+  `children/{child_id}/sessions/{session_id}/turn_{seq}_user.wav`。
+
+### MQTT
+
+```env
+MQTT_BROKER_HOST=127.0.0.1
+MQTT_BROKER_PORT=1883
+MQTT_USERNAME=
+MQTT_PASSWORD=
+MQTT_CLIENT_ID_PREFIX=yoo-buddy-gw-
+```
+
+> 建议使用 Mosquitto 等 Broker，本地调试可以直接 `localhost:1883`。
+
+### 文件存储根目录（本地调试用）
+
+```env
+FILE_BASE_PATH=./data
+```
+
+> S3 已经是主存储，这个目录主要用于本地调试 / 备选落地。
+
+### 认证（如果后面给家长加登录）
+
+```env
+AUTH_JWT_SECRET=change_me_to_a_random_secret
+```
+
+> 当前版本如果还没启用家长登录，可以先留这个字段，方便后续扩展。
 
 ---
 
@@ -131,15 +228,13 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. 配置环境变量
+### 2. 配置 `.env`
 
-复制 `.env.example` 为 `.env`，并根据实际情况填写：
+按上一节说明，准备 `.env.example` 并复制为 `.env`，至少要保证：
 
-- 数据库配置：`DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME`
-- DeepSeek：`DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL`
-- 讯飞：`XFYUN_APPID` / `XFYUN_APIKEY` / `XFYUN_APISECRET`
-- S3：`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_S3_REGION` / `AWS_S3_BUCKET` / `AWS_S3_BASE_URL`
-- MQTT：`MQTT_BROKER_HOST` / `MQTT_BROKER_PORT` / `MQTT_USERNAME` / `MQTT_PASSWORD`
+- 数据库可连通；
+- MQTT Broker 地址正确；
+- DeepSeek / 讯飞 / S3 的 key 不为空（如果暂时不用某个外部服务，可在代码中选择 dummy provider 或注释对应调用）。
 
 ### 3. 初始化数据库
 
@@ -147,7 +242,7 @@ pip install -r requirements.txt
 python init_db.py
 ```
 
-如需测试数据（家长 / 孩子 / 设备绑定等），执行：
+如果需要测试数据（家长 / 孩子 / 设备绑定等），执行：
 
 ```bash
 python init_data.py
@@ -159,13 +254,13 @@ python init_data.py
 uvicorn app.main:app --reload --port 8000
 ```
 
-默认将提供以下主要接口：
+主要接口：
 
 - `POST /api/parents/setup` – 家长初始化绑定孩子和设备
 - `GET  /api/history/children/{child_id}/sessions` – 会话列表
 - `GET  /api/history/sessions/{session_id}/turns` – 单次会话详情
 
-你可以通过 Swagger UI 访问：  
+Swagger UI：  
 `http://127.0.0.1:8000/docs`
 
 ### 5. 启动 MQTT 网关
@@ -183,7 +278,7 @@ MQTT 网关会：
 
 ### 6. 使用客户端脚本模拟“玩具端”
 
-准备一段 **16kHz 单声道 16bit WAV** 文件（如 `toy/request/test_input_1.wav`），然后执行：
+准备一段 **16kHz 单声道 16bit WAV** 文件（比如：`toy/request/test_input_1.wav`），然后执行：
 
 ```bash
 python client.py   --host 127.0.0.1   --port 1883   --device-sn abc1244   --input-wav ./toy/request/test_input_1.wav   --output-dir ./toy/reply
@@ -194,43 +289,28 @@ python client.py   --host 127.0.0.1   --port 1883   --device-sn abc1244   --inpu
 
 ---
 
-## 安全策略与风控逻辑（简要说明）
+## 安全策略 & 可扩展方向
 
 - 所有进入大模型前后的文本都会经过 `domain/safety.py` 中的规则检测；
-- 对于孩子端文本：  
-  - 如果包含敏感 / 危险内容（例如自伤、自杀、严重暴力、家长禁止的话题等），
-    会在 `Turn` 中记录 `risk_flag=1` 以及 `risk_source="user"`、`risk_reason`；
-- 对于模型回复文本：
-  - 一旦检测到风险内容，不会将这一版本直接返回，而是统一替换为一段**安全的引导话术**；
-  - DB 中只保留收敛后的安全版本。
+- 对于孩子发出的内容，如果检测到风险，会在 `Turn` 中记录：
+  - `risk_flag=1`
+  - `risk_source="user"`
+  - `risk_reason` 为命中的规则说明；
+- 对于模型回复，一旦检测到风险内容，不会原样返回，而是替换为一段安全的引导话术，DB 中仅保存收敛后的版本。
 
-家长可以通过历史接口查看哪些轮次存在风险，便于对孩子做及时的干预和关爱。
+可以在此基础上扩展：
 
----
-
-## 可扩展方向
-
-- **多模型路由 / A/B 实验**：
-  - 根据孩子年龄段、会话类型、风险等级，自动在不同大模型之间路由；
-  - 支持埋点对话质量评分，为后续模型对比实验和优化提供基础。
-
-- **内容审核增强**：
-  - 引入更精细的审核标签（情绪识别、欺凌检测等），为家长提供更全面的成长报告。
-
-- **家长控制台**：
-  - 为家长提供 Web 控制台：查看孩子使用时长、主题偏好、风险聚类情况等。
-
-- **设备侧优化**：
-  - 支持断线重试、消息重发、QoS 等，增强 IoT 场景的鲁棒性。
+- 多模型路由（按年龄/场景选不同模型）；
+- 更细粒度的审核标签（情绪、欺凌等）；
+- 家长 Web 控制台；
+- IoT 侧重试 / ACK / QoS 优化。
 
 ---
 
 ## 许可
 
-本项目默认以 MIT 协议开源（可根据你自己的实际情况修改）。
+本项目默认以 MIT 协议开源（可根据需要调整）。
 
 ```text
 MIT License
 ```
-
-欢迎用于学习和个人使用。
